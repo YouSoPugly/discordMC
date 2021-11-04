@@ -1,99 +1,103 @@
-const Discord = require('discord.js')
-const { MessageEmbed } = require('discord.js')
+const { ThreadChannel, MessageEmbed } = require('discord.js');
 const mineflayer = require('mineflayer');
-const { REST } = require('@discordjs/rest');
-const { Routes } = require('discord-api-types/v9');
-const { ChatMessage } = require('prismarine-chat');
-const fs = require('fs');
 
-const client = new Discord.Client({intents: [Discord.Intents.FLAGS.GUILDS]});
-const { token, username, password, server, clientID, guildID } = require('./config.json');
-const { channel } = require('diagnostics_channel');
-const { brotliCompress } = require('zlib');
 
-const commands = [];
-const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 
-const rest = new REST({ version: '9' }).setToken(token);
-
-var bot = mineflayer.createBot({
-    host: server,
-    username: username,
-    password: password
-})
-
-client.on("ready", async => {
-    console.log("discord ready")
-})
-
-bot.on("login", () => {
-    console.log("minecraft ready")
-
-    let channel = client.channels.cache.get("534976099508289540")
-    if (!channel) return
-
-    const embed = new MessageEmbed()
-        .setColor("DARK_GOLD")
-        .setTitle("MC to Discord")
-        .addFields(
-            { name: 'Server', value: server, inline: true},
-            { name: 'Username', value: bot._client.username, inline: true},
-            { name: 'Version', value: bot._client.version, inline: true}
-        )
-
-        channel.send({ embeds: [embed] });
-})
-
-bot.on('messagestr', (message, messagePosition, jsonMsg) => {
-    let channel = client.channels.cache.get("534976099508289540")
-    if (!channel || message.trim().length === 0) return
-    channel.send(message)
-})
-
-client.login(token)
-
-for (const file of commandFiles) {
-	const command = require(`./commands/${file}`);
-    const data = command.data.toJSON()
-	commands.push(data)
+const defaultOptions = {
+    username: "bot",
+    password: "",
+    host: "mc.minehut.net",
+    thread: ""
 }
 
-(async() => {
-	try {
-		console.log('Started refreshing application (/) commands.');
 
-		await rest.put(
-			Routes.applicationGuildCommands(clientID, guildID),
-			{ body: commands },
-		);
-
-		console.log('Successfully reloaded application (/) commands.');
-	} catch (error) {
-		console.error(error);
-	}
-})();
+module.exports = class botConnection {
 
 
-// LIST OF BOTS EACH ON DIFF SERVER WITH CHANNEL IN DISCORD
-client.on('interactionCreate', async interaction => {
-	if (!interaction.isCommand()) return;
+    static async build(options, client, channel) {
 
-	if (interaction.commandName === 'command') {
-        const command = interaction.options.getString("command", true)
 
-        bot.chat("/" + command)
+        if (channel.threads.cache.find(x => x.name === options.host) === undefined)
+            await channel.threads.create({
+                name: options.host,
+                autoArchiveDuration: 60,
+                reason: "New server joined."
+            })
 
-		await interaction.reply('Sent command ' + command);
-	}
+        return new botConnection(options, client, channel)
+    }
 
-    if (interaction.commandName === 'join') {
-        const server = interaction.options.getString("server", true)
+    constructor(options, client, channel) {
+        Object.assign(this, defaultOptions, options)
 
-        bot.quit()
-        bot = mineflayer.createBot({
-            host: server,
-            username: username,
-            password: password
+        this.bot = mineflayer.createBot(this)
+        this.client = client
+        this.thread = channel.threads.cache.find(x => x.name === options.host)
+
+        this.bot.on('login', () => {
+            const embed = new MessageEmbed()
+                .setColor("DARK_GOLD")
+                .setTitle("Successfully joined server!")
+                .addFields(
+                    { name: 'Server', value: "- " + options.host, inline: true},
+                    { name: 'Username', value: "- " + this.bot._client.username, inline: true},
+                    { name: 'Version', value: "- " + this.bot._client.version, inline: true}
+                )
+                .setFooter("pugly#0001 | pugly.xyz")
+                .setTimestamp()
+
+            this.thread.send({ embeds: [embed] });
+        })
+
+        this.bot.on('kicked', (reason) => {
+            const embed = new MessageEmbed()
+                .setColor("DARK_RED")
+                .setTitle("Bot was kicked from the server.")
+                .addFields(
+                    { name: 'Server', value: "- " + options.host, inline: true},
+                    { name: 'Username', value: "- " + this.bot._client.username, inline: true},
+                    { name: 'Version', value: "- " + this.bot._client.version, inline: true}
+                )
+                .setDescription("\nReason: \n" + reason)
+                .setFooter("pugly#0001 | pugly.xyz")
+                .setTimestamp()
+
+            this.thread.send({ embeds: [embed] });
+        })
+
+        this.bot.on('messagestr', (message, messagePosition, jsonMsg) => {
+            if (message.trim().length === 0) return
+            this.thread.send(message)
         })
     }
-});
+
+
+    toString() {
+        return (this.username + " | " + this.host + "  |  " + this.bot)
+    }
+
+    async sendChat(message) {
+        this.bot.chat(message)
+    }
+
+    async quit() {
+
+        if (this.bot._client.username === undefined)
+            return
+
+        const embed = new MessageEmbed()
+            .setColor("DARK_RED")
+            .setTitle("Disconnected from server...")
+            .addFields(
+                { name: 'Server', value: "- " + this.host, inline: true},
+                { name: 'Username', value: "- " + this.bot._client.username, inline: true},
+                { name: 'Version', value: "- " + this.bot._client.version, inline: true}
+            )
+            .setFooter("pugly#0001 | pugly.xyz")
+            .setTimestamp()
+
+        this.thread.send({ embeds: [embed] });
+
+        this.bot.end()
+    }
+}
