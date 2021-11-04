@@ -73,8 +73,6 @@ client.on('messageCreate', async interaction => {
 
         const command = interaction.cleanContent.toLowerCase().substring(1).trim();
 
-        console.log(command)
-
         if (command == "quit") {
             botMap.get(interaction.channel.name).quit()
         }
@@ -96,17 +94,12 @@ const { resourceUsage } = require('process');
 
 async function addBot(server) {
 
-    console.log("started adding bot")
-
     if (botMap.has(server)) {
         
         botMap.get(server).quit()
         botMap.delete(server)
 
-        console.log("Bot is already on server " + server + ", reconnecting...")
     }
-
-    console.log("checked has server")
     
     const channel = client.channels.cache.get("534976099508289540")
 
