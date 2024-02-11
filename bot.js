@@ -6,7 +6,7 @@ const mineflayer = require('mineflayer');
 const defaultOptions = {
     username: "bot",
     password: "",
-    host: "mc.minehut.net",
+    host: "server.ip",
     thread: ""
 }
 
